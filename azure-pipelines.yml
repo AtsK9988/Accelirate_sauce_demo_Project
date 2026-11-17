@@ -1,0 +1,77 @@
+trigger:
+  - main
+
+pr:
+  - main
+
+parameters:
+  - name: poolType
+    displayName: Agent pool type
+    type: string
+    default: hosted
+    values:
+      - hosted
+      - selfhosted
+  - name: selfHostedPoolName
+    displayName: Self-hosted pool name
+    type: string
+    default: MySelfHostedPool
+
+jobs:
+  - job: ui_tests
+    displayName: UI tests
+    pool:
+      ${{ if eq(parameters.poolType, 'hosted') }}:
+        vmImage: ubuntu-latest
+      ${{ else }}:
+        name: ${{ parameters.selfHostedPoolName }}
+    strategy:
+      matrix:
+        chromium:
+          BROWSER: chromium
+        firefox:
+          BROWSER: firefox
+        webkit:
+          BROWSER: webkit
+    steps:
+      - task: UsePythonVersion@0
+        displayName: Use Python 3.11
+        inputs:
+          versionSpec: '3.11'
+
+      - script: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+        displayName: Install dependencies
+
+      - script: python -m playwright install --with-deps $(BROWSER)
+        displayName: Install Playwright browser
+
+      - script: >
+          python -m pytest
+          --browser $(BROWSER)
+          --junitxml=reports/junit-$(BROWSER).xml
+          --html=reports/report-$(BROWSER).html
+        displayName: Run tests
+
+      - task: PublishTestResults@2
+        displayName: Publish JUnit results
+        condition: succeededOrFailed()
+        inputs:
+          testResultsFormat: JUnit
+          testResultsFiles: reports/junit-*.xml
+          testRunTitle: UI tests ($(BROWSER))
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish reports
+        condition: succeededOrFailed()
+        inputs:
+          targetPath: reports
+          artifact: reports-$(BROWSER)
+
+      - task: PublishPipelineArtifact@1
+        displayName: Publish failure artifacts (traces, screenshots, videos)
+        condition: failed()
+        inputs:
+          targetPath: test-results
+          artifact: failure-artifacts-$(BROWSER)
