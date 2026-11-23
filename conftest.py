@@ -1,5 +1,6 @@
 import os
 import re
+import allure
 
 import pytest
 from playwright.sync_api import expect
@@ -46,6 +47,19 @@ def browser_context_args(browser_context_args, request):
         return browser_context_args
     state = request.getfixturevalue("storage_state_path")
     return {**browser_context_args, "storage_state": state}
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    outcome = yield
+    report = outcome.get_result()
+    if report.when == "call" and report.failed:
+        page = item.funcargs.get("page")
+        if page:
+            allure.attach(
+                page.screenshot(full_page=True),
+                name="failure-screenshot",
+                attachment_type=allure.attachment_type.PNG,
+            )
 
 
 @pytest.fixture
